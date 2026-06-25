@@ -1,0 +1,30 @@
+detection:
+  model_path: "models/yolov8n.pt"
+  confidence_threshold: 0.5
+  use_gpu: true
+  input_size: [640, 480]
+
+depth:
+  method: "height_based"
+  average_human_height_ft: 5.5
+
+camera:
+  focal_length_px: 700
+  sensor_height_mm: 4.8
+  image_height_px: 480
+  fps: 30
+
+range:
+  limit_ft: 5.0
+  use_spatial_optimization: true
+  grid_cell_size_ft: 5.0
+
+drone:
+  type: "usb"
+  source: "0"
+  resolution: [640, 480]
+
+display:
+  show_bounding_boxes: true
+  show_distances: true
+  show_fps: true
