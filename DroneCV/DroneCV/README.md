@@ -1,114 +1,118 @@
-# people-counter
+DroneCV — People Counter
 
-Real-time person detection and tracking for video files and live webcam feeds.
+Real-time person detection and tracking for drone footage, video files, and live streams.
 
-Built with YOLOv8 and a custom centroid tracker. Draws a persistent bounding box around every person in frame for as long as they remain visible, and keeps a live count in the corner.
+Built with YOLOv8 and ByteTrack. Draws a persistent bounding box around every person in frame, logs detections to CSV, generates a heatmap of where people spent time, and supports RTSP for live drone feeds.
 
----
 
-## What it does
+What it does
 
-- Detects people in a video file or webcam stream using YOLOv8
-- Assigns each person a persistent ID that follows them across frames
-- Draws a clean bounding box around each person while they're in frame
-- Shows a live "people in frame" counter in the top-right corner
-- Saves an annotated copy of the video when processing a file
-- Optional perspective calibration for more accurate spatial measurements
 
----
+Detects people using YOLOv8, filters by minimum box size (useful for high-altitude footage where noise gets misclassified)
+Tracks each person with ByteTrack — IDs survive occlusions and path crossings without swapping
+Confidence smoothing — a person must appear in 3 consecutive frames before their box is shown, eliminating single-frame false positives
+Live "people in frame" counter with 15-frame smoothing to prevent flicker
+Frame timestamp burned into every frame so you know exactly when each detection happened
+CSV log — one row per detection per frame with timestamp, track ID, position, and confidence
+Heatmap — accumulates where people appeared across the whole video, toggle with [H]
+Saves annotated output video automatically
+Auto-reconnect for RTSP streams that drop mid-flight
+Optional perspective calibration for accurate spatial measurements
 
-## Requirements
 
-- Python 3.10+
-- A GPU is not required — runs on CPU
 
----
+Requirements
 
-## Installation
 
-```bash
-pip install ultralytics opencv-python numpy
-```
+Python 3.10+
+GPU not required — runs on CPU
 
----
 
-## Usage
 
-```bash
-# Process a video file (saves annotated output automatically)
-python people_counter.py --source video.mp4
+Installation
+
+bashpip install ultralytics opencv-python numpy
+
+
+Usage
+
+bash# Process a video file (annotated output + CSV saved automatically)
+python people_counter_v2.py --source video.mp4
 
 # Live webcam
-python people_counter.py
+python people_counter_v2.py
 
-# Save annotated output to a specific path
-python people_counter.py --source video.mp4 --output result.mp4
+# Live RTSP stream from Raspberry Pi on drone
+python people_counter_v2.py --source rtsp://192.168.1.x:8554/stream
 
-# Adjust detection confidence (default 0.40)
-python people_counter.py --source video.mp4 --conf 0.5
+# Save to a specific output path
+python people_counter_v2.py --source video.mp4 --output result.mp4
 
-# Run without opening a display window (file output only)
-python people_counter.py --source video.mp4 --no-display
+# Adjust confidence (default 0.40)
+python people_counter_v2.py --source video.mp4 --conf 0.5
 
-# Run the perspective calibration wizard first
-python people_counter.py --calibrate
-```
+# Raise minimum box height for high-altitude footage
+python people_counter_v2.py --source video.mp4 --min-box 50
 
----
+# Headless — no display window, file output only
+python people_counter_v2.py --source video.mp4 --no-display
 
-## Controls (live window)
+# Force centroid tracker instead of ByteTrack
+python people_counter_v2.py --source video.mp4 --no-bytetrack
 
-| Key | Action |
-|---|---|
-| `Q` / `Esc` | Quit |
-| `R` | Reset counts and tracking |
-| `+` / `-` | Raise / lower confidence threshold |
-| `C` | Re-run calibration wizard (webcam only) |
+# Run perspective calibration wizard first
+python people_counter_v2.py --calibrate
 
----
 
-## Perspective calibration
+Controls (live window)
 
-By default the script uses a bounding-box height heuristic to estimate depth — people further from the camera appear smaller, so the scale factor adjusts accordingly. This is good enough for most fixed-angle cameras.
+KeyActionQ / EscQuitRReset counts, tracking, and heatmapHToggle heatmap overlay+ / -Raise / lower confidence thresholdCRe-run calibration wizard (live / stream only)
 
-For higher accuracy, run `--calibrate` once. You'll click 4 floor points in the frame whose real-world positions you know (e.g. corners of a mat you've measured). The script computes a homography matrix, saves it to `calibration.npz`, and loads it automatically on every subsequent run.
 
-```bash
-python people_counter.py --calibrate
-```
+Output files
 
-Tips:
-- Use floor markings or tile corners — something you can physically measure
-- Place P0 at (0, 0), measure X rightward and Y away from the camera
-- The four points must form a proper quadrilateral (not collinear)
+When processing a video file, three files are saved automatically next to the source:
 
----
+FileContentsvideo_counted.mp4Annotated video with bounding boxes and HUDvideo_counted.csvPer-frame detection log (timestamp, ID, position, confidence)video_counted_heatmap.pngHeatmap image showing where people appeared
 
-## Output
 
-When processing a video file, an annotated copy is saved automatically next to the source file with `_counted` appended to the filename. A summary is printed to the terminal when the run finishes:
+Drone / Raspberry Pi setup
 
-```
-  Frames processed  : 3240
-  Peak in frame     : 7
-  Velocity mode     : fallback
-  Output video      : corridor_counted.mp4
-```
+The Pi streams video over WiFi; the laptop runs all detection locally.
 
----
+On the Raspberry Pi:
 
-## Model
+bashlibcamera-vid -t 0 --width 1280 --height 720 --framerate 30 \
+  --codec h264 -o - | ffmpeg -i - -c copy -f rtsp rtsp://0.0.0.0:8554/stream
 
-Uses `yolov8n.pt` by default (the smallest/fastest YOLOv8 variant). Pass `--model` to use a different set of weights:
+On the laptop:
 
-```bash
-python people_counter.py --source video.mp4 --model yolov8s.pt
-```
+bashpython people_counter_v2.py --source rtsp://192.168.1.x:8554/stream
 
-Larger models (`yolov8s`, `yolov8m`) are more accurate but slower on CPU.
+Replace 192.168.1.x with the Pi's IP address. If the stream drops, the program automatically attempts to reconnect.
 
----
+Tips for drone footage:
 
-## License
+
+Use --min-box 50 or higher — people look small from altitude
+Use --conf 0.45 or higher to cut false positives
+Run --calibrate with known ground measurements for accurate spatial data
+yolov8s.pt or yolov8m.pt are more accurate than the default yolov8n.pt if speed allows
+
+
+
+Perspective calibration
+
+Run --calibrate once. Click 4 floor points whose real-world positions you know. A homography matrix is saved to calibration.npz and loaded automatically on every subsequent run.
+
+
+Model options
+
+ModelSpeedAccuracyyolov8n.ptFastestLoweryolov8s.ptFastBetteryolov8m.ptMediumGood
+
+Pass --model yolov8s.pt to switch. All models download automatically on first run.
+
+
+License
 
 For educational and research use.
